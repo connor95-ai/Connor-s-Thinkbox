@@ -1,380 +1,402 @@
-import { useState, useCallback } from "react";
+import { useState, useRef } from "react";
 
-const MODEL = "claude-sonnet-4-20250514";
-const CONTRACT_TYPES = ["Auto-detect", "Lease", "SaaS Agreement", "Employment Contract", "Other"];
+const COLORS = {
+  bg: "#0f1117",
+  surface: "#161b27",
+  surfaceRaised: "#1d2436",
+  border: "rgba(255,255,255,0.07)",
+  accent: "#5b7fa6",
+  accentMuted: "rgba(91,127,166,0.15)",
+  teal: "#4a9d8f",
+  tealMuted: "rgba(74,157,143,0.15)",
+  danger: "#c0616b",
+  dangerMuted: "rgba(192,97,107,0.13)",
+  warn: "#b8914a",
+  warnMuted: "rgba(184,145,74,0.13)",
+  text: "#dde3ed",
+  textMuted: "#7a8ba0",
+  textDim: "#4a5568",
+};
 
-const STYLES = `
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+const css = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Inter', sans-serif; background: #0F1115; color: #E8EAF0; }
-  ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #1A1D24; } ::-webkit-scrollbar-thumb { background: #2E3240; border-radius: 3px; }
-
-  .app { min-height: 100vh; background: #0F1115; padding: 48px 24px 80px; }
-  .container { max-width: 760px; margin: 0 auto; }
-
-  /* Header */
-  .header { text-align: center; margin-bottom: 56px; }
-  .logo { display: inline-flex; align-items: center; gap: 10px; margin-bottom: 24px; }
-  .logo-icon { width: 36px; height: 36px; background: linear-gradient(135deg, #C9A84C, #F0D080); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; box-shadow: 0 0 20px rgba(201,168,76,0.3); }
-  .logo-name { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; background: linear-gradient(135deg, #E8D5A3, #C9A84C); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-  .header h1 { font-size: 42px; font-weight: 800; letter-spacing: -1.5px; color: #F0F1F5; line-height: 1.1; margin-bottom: 14px; }
-  .header h1 span { background: linear-gradient(135deg, #C9A84C, #F0D080); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-  .header p { font-size: 16px; color: #6B7080; font-weight: 400; max-width: 460px; margin: 0 auto; line-height: 1.6; }
-
-  /* Upload Card */
-  .card { background: #1A1D24; border-radius: 20px; border: 1px solid #23272F; box-shadow: 0 8px 40px rgba(0,0,0,0.4); padding: 32px; margin-bottom: 16px; }
-
-  .dropzone { border: 1.5px dashed #2E3240; border-radius: 16px; padding: 52px 24px; text-align: center; cursor: pointer; transition: all 0.2s ease; position: relative; background: #14171E; }
-  .dropzone:hover, .dropzone.over { border-color: #C9A84C; background: rgba(201,168,76,0.04); box-shadow: 0 0 0 4px rgba(201,168,76,0.06); }
-  .dropzone-icon { font-size: 32px; margin-bottom: 14px; display: block; }
-  .dropzone-title { font-size: 15px; font-weight: 600; color: #C8CAD4; margin-bottom: 6px; }
-  .dropzone-sub { font-size: 13px; color: #4A4F5E; }
-  .file-loaded { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-  .file-name { font-size: 15px; font-weight: 600; color: #E8D5A3; }
-  .file-size { font-size: 12px; color: #5A6070; }
-
-  .row { display: flex; align-items: center; gap: 12px; margin-top: 20px; }
-  .label { font-size: 13px; color: #6B7080; font-weight: 500; white-space: nowrap; }
-  select { flex: 1; background: #14171E; border: 1px solid #23272F; color: #C8CAD4; font-size: 13px; padding: 10px 14px; border-radius: 10px; outline: none; font-family: 'Inter', sans-serif; cursor: pointer; transition: border-color 0.2s; appearance: none; }
-  select:focus { border-color: #C9A84C; }
-
-  .btn-primary { width: 100%; background: linear-gradient(135deg, #B8962E, #E0C060); color: #0F1115; font-size: 14px; font-weight: 700; padding: 14px; border-radius: 12px; border: none; cursor: pointer; margin-top: 20px; transition: all 0.2s ease; letter-spacing: 0.2px; font-family: 'Inter', sans-serif; box-shadow: 0 4px 20px rgba(201,168,76,0.25); }
-  .btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 30px rgba(201,168,76,0.4); filter: brightness(1.05); }
-  .btn-primary:disabled { background: #23272F; color: #4A4F5E; cursor: not-allowed; box-shadow: none; transform: none; }
-
-  .btn-ghost { width: 100%; background: transparent; border: 1px solid #23272F; color: #6B7080; font-size: 13px; font-weight: 500; padding: 12px; border-radius: 12px; cursor: pointer; transition: all 0.2s; font-family: 'Inter', sans-serif; margin-top: 16px; }
-  .btn-ghost:hover { border-color: #3A3F50; color: #9CA3AF; background: #1A1D24; }
-
-  .error { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); color: #F87171; font-size: 13px; padding: 12px 16px; border-radius: 10px; margin-top: 16px; }
-
-  /* Loading */
-  .loading { text-align: center; padding: 80px 0; }
-  .spinner { width: 44px; height: 44px; border: 2px solid #23272F; border-top-color: #C9A84C; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 20px; }
+  body { background: ${COLORS.bg}; font-family: 'Inter', sans-serif; color: ${COLORS.text}; }
+  ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: ${COLORS.bg}; }
+  ::-webkit-scrollbar-thumb { background: ${COLORS.border}; border-radius: 3px; }
+  .upload-zone { border: 1.5px dashed ${COLORS.border}; border-radius: 12px; padding: 48px 32px;
+    text-align: center; cursor: pointer; transition: all 0.2s; background: ${COLORS.surface}; }
+  .upload-zone:hover, .upload-zone.drag { border-color: ${COLORS.accent}; background: ${COLORS.accentMuted}; }
+  .btn { padding: 10px 22px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px;
+    font-weight: 500; font-family: inherit; transition: all 0.2s; }
+  .btn-primary { background: ${COLORS.accent}; color: #fff; }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-ghost { background: transparent; color: ${COLORS.textMuted}; border: 1px solid ${COLORS.border}; }
+  .btn-ghost:hover { background: rgba(255,255,255,0.04); color: ${COLORS.text}; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .card { background: ${COLORS.surface}; border: 1px solid ${COLORS.border}; border-radius: 12px; }
+  .risk-high { background: ${COLORS.dangerMuted}; border-left: 3px solid ${COLORS.danger}; }
+  .risk-med  { background: ${COLORS.warnMuted};  border-left: 3px solid ${COLORS.warn};   }
+  .risk-low  { background: ${COLORS.tealMuted};  border-left: 3px solid ${COLORS.teal};   }
+  .tag { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; }
+  .tag-high { background: ${COLORS.dangerMuted}; color: ${COLORS.danger}; }
+  .tag-med  { background: ${COLORS.warnMuted};  color: ${COLORS.warn};  }
+  .tag-low  { background: ${COLORS.tealMuted};  color: ${COLORS.teal};  }
+  .tab { padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500;
+    color: ${COLORS.textMuted}; transition: all 0.15s; border: none; background: transparent; font-family: inherit; }
+  .tab.active { background: ${COLORS.accentMuted}; color: ${COLORS.accent}; }
+  .tab:hover:not(.active) { color: ${COLORS.text}; }
+  .clause-item { padding: 16px 18px; border-radius: 8px; margin-bottom: 10px; cursor: pointer;
+    transition: all 0.15s; }
+  .clause-item:hover { filter: brightness(1.1); }
+  .divider { height: 1px; background: ${COLORS.border}; margin: 20px 0; }
+  .score-ring { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+  .benchmark-row { display: flex; align-items: center; gap: 12px; padding: 12px 0;
+    border-bottom: 1px solid ${COLORS.border}; }
+  .benchmark-bar-bg { flex: 1; height: 4px; background: rgba(255,255,255,0.07); border-radius: 2px; }
+  .benchmark-bar-fill { height: 100%; border-radius: 2px; transition: width 0.6s ease; }
+  .spinner { width: 40px; height: 40px; border: 3px solid ${COLORS.border};
+    border-top-color: ${COLORS.accent}; border-radius: 50%; animation: spin 0.8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .loading-title { font-size: 18px; font-weight: 600; color: #C8CAD4; margin-bottom: 6px; }
-  .loading-sub { font-size: 14px; color: #4A4F5E; }
-
-  /* Results */
-  .summary-card { background: linear-gradient(135deg, #1A1D24, #1E2130); border-radius: 20px; border: 1px solid #2A2E3A; padding: 32px; margin-bottom: 24px; box-shadow: 0 8px 40px rgba(0,0,0,0.4); }
-  .summary-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
-  .contract-label { font-size: 11px; color: #4A4F5E; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin-bottom: 6px; }
-  .contract-type { font-size: 26px; font-weight: 800; color: #F0F1F5; letter-spacing: -0.5px; }
-  .contract-parties { font-size: 13px; color: #6B7080; margin-top: 4px; }
-  .risk-badge { padding: 8px 18px; border-radius: 100px; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; white-space: nowrap; flex-shrink: 0; }
-  .risk-badge.high { background: rgba(239,68,68,0.12); color: #F87171; border: 1px solid rgba(239,68,68,0.2); }
-  .risk-badge.medium { background: rgba(245,158,11,0.12); color: #FBBF24; border: 1px solid rgba(245,158,11,0.2); }
-  .risk-badge.low { background: rgba(52,211,153,0.12); color: #6EE7B7; border: 1px solid rgba(52,211,153,0.2); }
-  .summary-text { font-size: 14px; color: #8B90A0; line-height: 1.7; padding-bottom: 24px; border-bottom: 1px solid #23272F; margin-bottom: 24px; }
-  .stats { display: flex; gap: 12px; }
-  .stat { flex: 1; background: #14171E; border-radius: 12px; padding: 16px; text-align: center; border: 1px solid #1E2130; }
-  .stat-num { font-size: 28px; font-weight: 800; margin-bottom: 4px; }
-  .stat-num.high { color: #F87171; }
-  .stat-num.medium { color: #FBBF24; }
-  .stat-num.low { color: #6EE7B7; }
-  .stat-label { font-size: 11px; color: #4A4F5E; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; }
-
-  /* Clause section */
-  .section-title { font-size: 11px; color: #4A4F5E; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
-  .section-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-  .section-dot.high { background: #F87171; box-shadow: 0 0 6px rgba(248,113,113,0.6); }
-  .section-dot.medium { background: #FBBF24; box-shadow: 0 0 6px rgba(251,191,36,0.6); }
-  .section-dot.low { background: #6EE7B7; box-shadow: 0 0 6px rgba(110,231,183,0.6); }
-
-  .clause { background: #1A1D24; border-radius: 14px; border: 1px solid #23272F; margin-bottom: 8px; overflow: hidden; transition: border-color 0.2s; }
-  .clause:hover { border-color: #2E3240; }
-  .clause.open { border-color: #2E3240; }
-  .clause-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; cursor: pointer; gap: 12px; }
-  .clause-left { display: flex; align-items: flex-start; gap: 12px; flex: 1; min-width: 0; }
-  .clause-dot { width: 7px; height: 7px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; }
-  .clause-dot.high { background: #F87171; }
-  .clause-dot.medium { background: #FBBF24; }
-  .clause-dot.low { background: #6EE7B7; }
-  .clause-name { font-size: 14px; font-weight: 600; color: #D0D3DE; margin-bottom: 3px; }
-  .clause-summary { font-size: 12px; color: #4A4F5E; line-height: 1.5; }
-  .clause-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-  .mini-badge { font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 100px; letter-spacing: 0.5px; text-transform: uppercase; }
-  .mini-badge.high { background: rgba(239,68,68,0.1); color: #F87171; }
-  .mini-badge.medium { background: rgba(245,158,11,0.1); color: #FBBF24; }
-  .mini-badge.low { background: rgba(52,211,153,0.1); color: #6EE7B7; }
-  .chevron { color: #4A4F5E; font-size: 10px; transition: transform 0.2s; }
-  .chevron.open { transform: rotate(180deg); }
-
-  .clause-body { padding: 0 20px 20px; border-top: 1px solid #1E2130; }
-  .clause-section { margin-top: 16px; }
-  .clause-section-label { font-size: 10px; color: #4A4F5E; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
-  .clause-section-label span { font-size: 12px; }
-  blockquote { font-size: 12px; color: #6B7080; font-style: italic; background: #14171E; border-left: 2px solid #C9A84C; padding: 10px 14px; border-radius: 0 8px 8px 0; line-height: 1.6; }
-  .body-text { font-size: 13px; color: #8B90A0; line-height: 1.7; }
-  .redline { font-size: 12px; color: #6EE7B7; background: rgba(52,211,153,0.06); border: 1px solid rgba(52,211,153,0.15); padding: 10px 14px; border-radius: 8px; font-family: 'SF Mono', 'Fira Code', monospace; line-height: 1.6; }
-
-  /* Missing clauses */
-  .missing-card { background: rgba(96,165,250,0.04); border: 1px solid rgba(96,165,250,0.12); border-radius: 16px; padding: 24px; margin-bottom: 20px; }
-  .missing-title { font-size: 13px; font-weight: 700; color: #93C5FD; margin-bottom: 12px; display: flex; align-items: center; gap-8px; }
-  .missing-item { font-size: 13px; color: #6B7080; padding: 5px 0; border-bottom: 1px solid rgba(96,165,250,0.06); display: flex; align-items: center; gap: 8px; }
-  .missing-item:last-child { border-bottom: none; }
-
-  .disclaimer { text-align: center; font-size: 11px; color: #2E3240; margin-top: 40px; }
+  select { background: ${COLORS.surfaceRaised}; border: 1px solid ${COLORS.border}; color: ${COLORS.text};
+    border-radius: 8px; padding: 9px 14px; font-size: 13px; font-family: inherit; outline: none; }
+  select:focus { border-color: ${COLORS.accent}; }
 `;
 
-function ClauseCard({ clause }) {
-  const [open, setOpen] = useState(false);
-  const lv = clause.risk_level;
-  return (
-    <div className={`clause${open ? " open" : ""}`}>
-      <div className="clause-header" onClick={() => setOpen(!open)}>
-        <div className="clause-left">
-          <div className={`clause-dot ${lv}`} />
-          <div>
-            <div className="clause-name">{clause.clause_name}</div>
-            <div className="clause-summary">{clause.summary}</div>
-          </div>
-        </div>
-        <div className="clause-right">
-          <span className={`mini-badge ${lv}`}>{lv}</span>
-          <span className={`chevron${open ? " open" : ""}`}>▼</span>
-        </div>
-      </div>
-      {open && (
-        <div className="clause-body">
-          {clause.original_text && (
-            <div className="clause-section">
-              <div className="clause-section-label"><span>📌</span> Original Text</div>
-              <blockquote>"{clause.original_text}"</blockquote>
-            </div>
-          )}
-          <div className="clause-section">
-            <div className="clause-section-label"><span>💡</span> Why It Matters</div>
-            <div className="body-text">{clause.explanation}</div>
-          </div>
-          {clause.benchmark && (
-            <div className="clause-section">
-              <div className="clause-section-label"><span>📊</span> Market Benchmark</div>
-              <div className="body-text">{clause.benchmark}</div>
-            </div>
-          )}
-          {clause.negotiation_tip && (
-            <div className="clause-section">
-              <div className="clause-section-label"><span>⚡</span> Negotiation Leverage</div>
-              <div className="body-text">{clause.negotiation_tip}</div>
-            </div>
-          )}
-          {clause.suggested_language && (
-            <div className="clause-section">
-              <div className="clause-section-label"><span>✏️</span> Suggested Redline</div>
-              <div className="redline">{clause.suggested_language}</div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
+// ── Prompts ────────────────────────────────────────────────────────────────────
+const buildPrompt = (contractType, text) => `
+You are a senior contract attorney. Analyze the following ${contractType} contract excerpt and return ONLY valid JSON (no markdown, no preamble).
+
+Schema:
+{
+  "summary": "2-3 sentence plain-English summary",
+  "overallScore": <integer 0-100, higher = more favorable to the signing party>,
+  "clauses": [
+    {
+      "id": "c1",
+      "title": "Clause title",
+      "excerpt": "Short relevant quote or paraphrase (max 120 chars)",
+      "risk": "high|medium|low",
+      "explanation": "Plain-English explanation of why this matters",
+      "negotiationTip": "Concrete suggestion for how to push back or negotiate",
+      "isStandard": <true|false>
+    }
+  ],
+  "benchmarks": [
+    {
+      "aspect": "Aspect name (e.g. Notice Period, Liability Cap)",
+      "contractValue": "What this contract says",
+      "marketStandard": "What is typical in the market",
+      "score": <integer 0-100, higher = better for signing party>
+    }
+  ],
+  "topNegotiationPoints": ["point 1", "point 2", "point 3"]
 }
 
-export default function App() {
+Identify 5-8 clauses and 4-6 benchmark aspects. Be specific to the contract type.
+
+Contract type: ${contractType}
+Contract text (may be partial):
+---
+${text.slice(0, 6000)}
+---
+`;
+
+// ── Icons ──────────────────────────────────────────────────────────────────────
+const Icon = ({ name, size = 16, color = "currentColor" }) => {
+  const icons = {
+    upload: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
+    file: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>,
+    alert: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
+    check: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
+    scale: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><path d="M3 9l9-7 9 7"/><path d="M3 15l6 6"/><path d="M21 15l-6 6"/><path d="M3 15h6"/><path d="M15 15h6"/></svg>,
+    zap: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+    chevron: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>,
+    refresh: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>,
+  };
+  return icons[name] || null;
+};
+
+// ── ScoreRing ──────────────────────────────────────────────────────────────────
+const ScoreRing = ({ score }) => {
+  const r = 36, circ = 2 * Math.PI * r;
+  const dash = (score / 100) * circ;
+  const color = score >= 70 ? COLORS.teal : score >= 40 ? COLORS.warn : COLORS.danger;
+  return (
+    <div className="score-ring" style={{ width: 96, height: 96 }}>
+      <svg width="96" height="96" style={{ transform: "rotate(-90deg)" }}>
+        <circle cx="48" cy="48" r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="7" />
+        <circle cx="48" cy="48" r={r} fill="none" stroke={color} strokeWidth="7"
+          strokeDasharray={`${dash} ${circ}`} strokeLinecap="round" />
+      </svg>
+      <div style={{ position: "absolute", textAlign: "center" }}>
+        <div style={{ fontSize: 22, fontWeight: 600, color }}>{score}</div>
+        <div style={{ fontSize: 10, color: COLORS.textMuted }}>/ 100</div>
+      </div>
+    </div>
+  );
+};
+
+// ── Main App ───────────────────────────────────────────────────────────────────
+export default function ContractIQ() {
+  const [stage, setStage] = useState("upload"); // upload | loading | results
+  const [drag, setDrag] = useState(false);
   const [file, setFile] = useState(null);
-  const [contractType, setContractType] = useState("Auto-detect");
-  const [loading, setLoading] = useState(false);
+  const [contractType, setContractType] = useState("Lease");
+  const [pastedText, setPastedText] = useState("");
   const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
-  const [dragOver, setDragOver] = useState(false);
+  const [error, setError] = useState("");
+  const [activeTab, setActiveTab] = useState("clauses");
+  const [expandedClause, setExpandedClause] = useState(null);
+  const fileRef = useRef();
 
   const handleFile = f => {
-    if (f && (f.type === "application/pdf" || f.type === "text/plain" || f.name.endsWith(".txt") || f.name.endsWith(".pdf"))) {
-      setFile(f); setResult(null); setError(null);
-    } else {
-      setError("Please upload a PDF or TXT file.");
-    }
+    if (!f) return;
+    setFile(f);
+    const reader = new FileReader();
+    reader.onload = e => setPastedText(e.target.result);
+    reader.readAsText(f);
   };
 
-  const onDrop = useCallback(e => {
-    e.preventDefault(); setDragOver(false);
+  const handleDrop = e => {
+    e.preventDefault(); setDrag(false);
     handleFile(e.dataTransfer.files[0]);
-  }, []);
+  };
 
   const analyze = async () => {
-    if (!file) return;
-    setLoading(true); setError(null);
+    const text = pastedText.trim();
+    if (!text) { setError("Please upload a file or paste contract text."); return; }
+    setError(""); setStage("loading");
     try {
-      const toBase64 = f => new Promise((res, rej) => {
-        const r = new FileReader();
-        r.onload = () => res(r.result.split(",")[1]);
-        r.onerror = rej;
-        r.readAsDataURL(f);
-      });
-      const isPdf = file.type === "application/pdf";
-      let messages;
-      if (isPdf) {
-        const b64 = await toBase64(file);
-        messages = [{ role: "user", content: [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } }, { type: "text", text: buildPrompt(contractType) }] }];
-      } else {
-        const text = await file.text();
-        messages = [{ role: "user", content: `${buildPrompt(contractType)}\n\n---CONTRACT TEXT---\n${text}` }];
-      }
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: MODEL, max_tokens: 4000, messages })
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          messages: [{ role: "user", content: buildPrompt(contractType, text) }],
+        }),
       });
       const data = await res.json();
-      const raw = data.content?.map(b => b.text || "").join("");
-      const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+      const raw = data.content?.map(b => b.text || "").join("") || "";
+      const clean = raw.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(clean);
       setResult(parsed);
+      setStage("results");
     } catch (e) {
-      setError("Analysis failed. " + e.message);
-    } finally {
-      setLoading(false);
+      console.error(e);
+      setError("Analysis failed. Please check the contract text and try again.");
+      setStage("upload");
     }
   };
 
-  const byRisk = lv => result?.clauses?.filter(c => c.risk_level === lv) || [];
+  const reset = () => { setStage("upload"); setFile(null); setPastedText(""); setResult(null); setError(""); setExpandedClause(null); };
+
+  const riskColor = r => r === "high" ? COLORS.danger : r === "medium" ? COLORS.warn : COLORS.teal;
+  const riskClass = r => r === "high" ? "risk-high" : r === "medium" ? "risk-med" : "risk-low";
+  const tagClass  = r => r === "high" ? "tag-high"  : r === "medium" ? "tag-med"  : "tag-low";
 
   return (
     <>
-      <style>{STYLES}</style>
-      <div className="app">
-        <div className="container">
-
-          <div className="header">
-            <div className="logo">
-              <div className="logo-icon">⚖</div>
-              <span className="logo-name">ContractIQ</span>
-            </div>
-            <h1>Know what you're<br /><span>signing.</span></h1>
-            <p>Upload any contract and get instant risk analysis, market benchmarks, and negotiation leverage — in plain English.</p>
-          </div>
-
-          {!result && !loading && (
-            <div className="card">
-              <div
-                className={`dropzone${dragOver ? " over" : ""}`}
-                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={onDrop}
-                onClick={() => document.getElementById("fi").click()}
-              >
-                <input id="fi" type="file" accept=".pdf,.txt" style={{display:"none"}} onChange={e => handleFile(e.target.files[0])} />
-                {file ? (
-                  <div className="file-loaded">
-                    <span style={{fontSize:28}}>📎</span>
-                    <div className="file-name">{file.name}</div>
-                    <div className="file-size">{(file.size/1024).toFixed(1)} KB · ready to analyze</div>
-                  </div>
-                ) : (
-                  <>
-                    <span className="dropzone-icon">📄</span>
-                    <div className="dropzone-title">Drop your contract here</div>
-                    <div className="dropzone-sub">Supports PDF & TXT · Lease, SaaS, Employment, or any agreement</div>
-                  </>
-                )}
+      <style>{css}</style>
+      <div style={{ minHeight: "100vh", padding: "0 0 60px" }}>
+        {/* Header */}
+        <div style={{ borderBottom: `1px solid ${COLORS.border}`, padding: "0 32px" }}>
+          <div style={{ maxWidth: 900, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", height: 58 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 7, background: COLORS.accent, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Icon name="file" size={14} color="#fff" />
               </div>
+              <span style={{ fontWeight: 600, fontSize: 16, letterSpacing: "-0.01em" }}>ContractIQ</span>
+            </div>
+            {stage === "results" && (
+              <button className="btn btn-ghost" onClick={reset} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+                <Icon name="refresh" size={13} /> New Analysis
+              </button>
+            )}
+          </div>
+        </div>
 
-              <div className="row">
-                <span className="label">Contract type</span>
-                <select value={contractType} onChange={e => setContractType(e.target.value)}>
-                  {CONTRACT_TYPES.map(t => <option key={t}>{t}</option>)}
+        <div style={{ maxWidth: 900, margin: "0 auto", padding: "40px 32px 0" }}>
+
+          {/* ── UPLOAD ── */}
+          {stage === "upload" && (
+            <div style={{ maxWidth: 600, margin: "0 auto" }}>
+              <h1 style={{ fontSize: 26, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 6 }}>Analyze Your Contract</h1>
+              <p style={{ color: COLORS.textMuted, fontSize: 14, marginBottom: 32 }}>
+                Upload or paste any contract. ContractIQ flags risky clauses, benchmarks terms, and shows your negotiation leverage.
+              </p>
+
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ fontSize: 12, color: COLORS.textMuted, fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase", display: "block", marginBottom: 8 }}>Contract Type</label>
+                <select value={contractType} onChange={e => setContractType(e.target.value)} style={{ width: "100%" }}>
+                  {["Lease", "SaaS Agreement", "Employment Contract", "NDA", "Consulting Agreement", "Service Agreement"].map(t => (
+                    <option key={t}>{t}</option>
+                  ))}
                 </select>
               </div>
 
-              {error && <div className="error">{error}</div>}
+              <div
+                className={`upload-zone${drag ? " drag" : ""}`}
+                onClick={() => fileRef.current.click()}
+                onDragOver={e => { e.preventDefault(); setDrag(true); }}
+                onDragLeave={() => setDrag(false)}
+                onDrop={handleDrop}
+                style={{ marginBottom: 16 }}
+              >
+                <input ref={fileRef} type="file" accept=".txt,.pdf,.doc,.docx" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
+                <Icon name="upload" size={28} color={COLORS.textDim} />
+                <p style={{ marginTop: 12, fontWeight: 500, fontSize: 14 }}>{file ? file.name : "Drop your contract here"}</p>
+                <p style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 4 }}>TXT files work best · PDF/DOCX text will be extracted</p>
+              </div>
 
-              <button className="btn-primary" disabled={!file || loading} onClick={analyze}>
-                Analyze Contract →
+              <div style={{ position: "relative", marginBottom: 16 }}>
+                <div className="divider" style={{ margin: "0 0 16px" }} />
+                <span style={{ position: "absolute", top: -9, left: "50%", transform: "translateX(-50%)", background: COLORS.bg, padding: "0 10px", color: COLORS.textDim, fontSize: 12 }}>or paste text</span>
+              </div>
+
+              <textarea
+                value={pastedText}
+                onChange={e => { setPastedText(e.target.value); if (file) setFile(null); }}
+                placeholder="Paste contract text here…"
+                style={{ width: "100%", minHeight: 140, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "14px 16px", color: COLORS.text, fontSize: 13, fontFamily: "inherit", resize: "vertical", outline: "none", lineHeight: 1.6 }}
+              />
+
+              {error && <p style={{ color: COLORS.danger, fontSize: 13, marginTop: 8 }}>{error}</p>}
+
+              <button className="btn btn-primary" onClick={analyze} disabled={!pastedText.trim()}
+                style={{ width: "100%", marginTop: 16, padding: "12px", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                <Icon name="zap" size={15} /> Analyze Contract
               </button>
             </div>
           )}
 
-          {loading && (
-            <div className="loading">
+          {/* ── LOADING ── */}
+          {stage === "loading" && (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 360, gap: 20 }}>
               <div className="spinner" />
-              <div className="loading-title">Analyzing your contract…</div>
-              <div className="loading-sub">Identifying risky clauses and benchmarking against standard terms</div>
+              <p style={{ color: COLORS.textMuted, fontSize: 14 }}>Analyzing your {contractType}…</p>
+              <p style={{ color: COLORS.textDim, fontSize: 12 }}>Reviewing clauses · Benchmarking terms · Identifying leverage</p>
             </div>
           )}
 
-          {result && !loading && (
-            <>
-              <div className="summary-card">
-                <div className="summary-top">
-                  <div>
-                    <div className="contract-label">Contract Type</div>
-                    <div className="contract-type">{result.contract_type || contractType}</div>
-                    {result.parties && <div className="contract-parties">{result.parties}</div>}
+          {/* ── RESULTS ── */}
+          {stage === "results" && result && (
+            <div>
+              {/* Hero row */}
+              <div className="card" style={{ padding: "28px 32px", marginBottom: 24, display: "flex", gap: 32, alignItems: "center", flexWrap: "wrap" }}>
+                <ScoreRing score={result.overallScore} />
+                <div style={{ flex: 1, minWidth: 240 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                    <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: COLORS.textMuted, fontWeight: 500 }}>{contractType}</span>
+                    <span style={{ color: COLORS.textDim }}>·</span>
+                    <span style={{ fontSize: 11, color: COLORS.textMuted }}>{result.clauses?.length || 0} clauses reviewed</span>
                   </div>
-                  <div className={`risk-badge ${result.overall_risk?.toLowerCase()}`}>
-                    {result.overall_risk} Risk
-                  </div>
-                </div>
-                {result.summary && <div className="summary-text">{result.summary}</div>}
-                <div className="stats">
-                  {[["high","🔴"],["medium","🟡"],["low","🟢"]].map(([lv, icon]) => (
-                    <div className="stat" key={lv}>
-                      <div className={`stat-num ${lv}`}>{byRisk(lv).length}</div>
-                      <div className="stat-label">{lv} risk</div>
-                    </div>
-                  ))}
+                  <p style={{ fontSize: 14, lineHeight: 1.7, color: COLORS.text }}>{result.summary}</p>
                 </div>
               </div>
 
-              {["high","medium","low"].map(lv => {
-                const clauses = byRisk(lv);
-                if (!clauses.length) return null;
-                return (
-                  <div key={lv} style={{marginBottom:32}}>
-                    <div className="section-title">
-                      <div className={`section-dot ${lv}`} />
-                      {lv} risk · {clauses.length} clause{clauses.length !== 1 ? "s" : ""}
-                    </div>
-                    {clauses.map((c,i) => <ClauseCard key={i} clause={c} />)}
+              {/* Top negotiation points */}
+              {result.topNegotiationPoints?.length > 0 && (
+                <div className="card" style={{ padding: "20px 24px", marginBottom: 24, background: COLORS.accentMuted, borderColor: `rgba(91,127,166,0.2)` }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                    <Icon name="zap" size={14} color={COLORS.accent} />
+                    <span style={{ fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: COLORS.accent }}>Top Negotiation Points</span>
                   </div>
-                );
-              })}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {result.topNegotiationPoints.map((p, i) => (
+                      <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                        <span style={{ color: COLORS.accent, fontSize: 12, fontWeight: 600, minWidth: 18, marginTop: 1 }}>{i + 1}.</span>
+                        <span style={{ fontSize: 13, color: COLORS.text, lineHeight: 1.5 }}>{p}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-              {result.missing_clauses?.length > 0 && (
-                <div className="missing-card">
-                  <div className="missing-title">⚠️ &nbsp;Missing Standard Clauses</div>
-                  {result.missing_clauses.map((m,i) => (
-                    <div className="missing-item" key={i}>
-                      <span style={{color:"#3B82F6"}}>›</span> {m}
+              {/* Tabs */}
+              <div style={{ display: "flex", gap: 4, marginBottom: 20 }}>
+                {[
+                  { id: "clauses", label: "Risky Clauses", icon: "alert" },
+                  { id: "benchmarks", label: "Benchmarks", icon: "scale" },
+                ].map(t => (
+                  <button key={t.id} className={`tab${activeTab === t.id ? " active" : ""}`} onClick={() => setActiveTab(t.id)}
+                    style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <Icon name={t.icon} size={13} /> {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Clauses */}
+              {activeTab === "clauses" && (
+                <div>
+                  {(result.clauses || []).map(c => (
+                    <div key={c.id} className={`clause-item ${riskClass(c.risk)}`}
+                      onClick={() => setExpandedClause(expandedClause === c.id ? null : c.id)}>
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                            <span style={{ fontWeight: 600, fontSize: 14 }}>{c.title}</span>
+                            <span className={`tag ${tagClass(c.risk)}`}>{c.risk}</span>
+                            {c.isStandard === false && <span className="tag" style={{ background: "rgba(255,255,255,0.06)", color: COLORS.textMuted }}>Non-standard</span>}
+                          </div>
+                          <p style={{ fontSize: 12, color: COLORS.textMuted, fontStyle: "italic", lineHeight: 1.5 }}>"{c.excerpt}"</p>
+                        </div>
+                        <div style={{ transform: `rotate(${expandedClause === c.id ? 90 : 0}deg)`, transition: "transform 0.2s", flexShrink: 0, marginTop: 2 }}>
+                          <Icon name="chevron" size={14} color={riskColor(c.risk)} />
+                        </div>
+                      </div>
+                      {expandedClause === c.id && (
+                        <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid rgba(255,255,255,0.07)` }}>
+                          <p style={{ fontSize: 13, lineHeight: 1.7, marginBottom: 12 }}>{c.explanation}</p>
+                          <div style={{ background: "rgba(0,0,0,0.15)", borderRadius: 8, padding: "12px 14px", display: "flex", gap: 8 }}>
+                            <Icon name="zap" size={13} color={COLORS.accent} />
+                            <div>
+                              <p style={{ fontSize: 11, color: COLORS.accent, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>Negotiation Tip</p>
+                              <p style={{ fontSize: 13, color: COLORS.text, lineHeight: 1.6 }}>{c.negotiationTip}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
 
-              <button className="btn-ghost" onClick={() => { setResult(null); setFile(null); }}>
-                ← Analyze another contract
-              </button>
-            </>
+              {/* Benchmarks */}
+              {activeTab === "benchmarks" && (
+                <div className="card" style={{ padding: "24px 28px" }}>
+                  {(result.benchmarks || []).map((b, i) => (
+                    <div key={i} className="benchmark-row">
+                      <div style={{ width: 160, flexShrink: 0 }}>
+                        <p style={{ fontSize: 13, fontWeight: 500 }}>{b.aspect}</p>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, gap: 8 }}>
+                          <span style={{ fontSize: 12, color: COLORS.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.contractValue}</span>
+                          <span style={{ fontSize: 12, color: COLORS.textMuted, whiteSpace: "nowrap", flexShrink: 0 }}>Std: {b.marketStandard}</span>
+                        </div>
+                        <div className="benchmark-bar-bg">
+                          <div className="benchmark-bar-fill" style={{
+                            width: `${b.score}%`,
+                            background: b.score >= 70 ? COLORS.teal : b.score >= 40 ? COLORS.warn : COLORS.danger,
+                          }} />
+                        </div>
+                      </div>
+                      <div style={{ width: 38, textAlign: "right", fontSize: 13, fontWeight: 600,
+                        color: b.score >= 70 ? COLORS.teal : b.score >= 40 ? COLORS.warn : COLORS.danger }}>
+                        {b.score}
+                      </div>
+                    </div>
+                  ))}
+                  <p style={{ fontSize: 11, color: COLORS.textDim, marginTop: 16 }}>Score reflects how favorable each term is to the signing party vs. market standard.</p>
+                </div>
+              )}
+            </div>
           )}
-
-          <div className="disclaimer">Not legal advice. Consult a qualified attorney before signing any agreement.</div>
         </div>
       </div>
     </>
   );
-}
-
-function buildPrompt(contractType) {
-  return `You are an expert contract attorney. Analyze this ${contractType === "Auto-detect" ? "contract" : contractType} and return ONLY a JSON object (no markdown, no preamble).
-
-{
-  "contract_type": "detected type",
-  "parties": "e.g. Between Acme Corp and Jane Doe",
-  "overall_risk": "High | Medium | Low",
-  "summary": "2-3 sentence plain-English overview and main concerns",
-  "clauses": [
-    {
-      "clause_name": "short name",
-      "risk_level": "high | medium | low",
-      "summary": "one sentence",
-      "original_text": "brief quote max 100 words",
-      "explanation": "plain English what this means for the signing party",
-      "benchmark": "how this compares to standard market terms",
-      "negotiation_tip": "specific leverage or ask",
-      "suggested_language": "optional replacement language"
-    }
-  ],
-  "missing_clauses": ["standard clauses absent from this contract"]
-}
-
-Find ALL significant clauses (8-15). Prioritize unusual, one-sided, or risky terms. Be specific and actionable.`;
 }
